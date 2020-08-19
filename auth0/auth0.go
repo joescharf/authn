@@ -7,10 +7,10 @@ import (
 
 type (
 	Config struct {
-		APIIdentifier string `envconfig:"AUTHN_AUD_API_IDENTIFIER"`
-		Domain        string `envconfig:"AUTHN_ISS_DOMAIN"`
-		ClientID      string `envconfig:"AUTHN_CLIENT_ID"`
-		ClientSecret  string `envconfig:"AUTHN_CLIENT_SECRET"`
+		APIIdentifier string `envconfig:"AUTH0_AUD_API_IDENTIFIER"`
+		Domain        string `envconfig:"AUTH0_ISS_DOMAIN"`
+		ClientID      string `envconfig:"AUTH0_CLIENT_ID"`
+		ClientSecret  string `envconfig:"AUTH0_CLIENT_SECRET"`
 	}
 
 	TokenRequest struct {

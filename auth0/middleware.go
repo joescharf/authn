@@ -24,7 +24,6 @@ func (a *Auth0) NewMiddleware() *jwtmiddleware.JWTMiddleware {
 				// Then check time based claims; exp, iat, nbf
 				err = claims.Valid()
 				if err != nil {
-					log.WithFields(log.Fields{"err": err}).Errorln("JWT: Invalid Claims")
 					return token, err
 				}
 				// Verify 'aud' claim
@@ -33,8 +32,7 @@ func (a *Auth0) NewMiddleware() *jwtmiddleware.JWTMiddleware {
 				switch reflect.TypeOf(claims["aud"]).String() {
 				case "string":
 					if claims.VerifyAudience(a.Config.APIIdentifier, true) == false {
-						err = errors.New("JWT: Invalid audience")
-						log.WithFields(log.Fields{"err": err}).Errorln("Error Validating JWT aud Claims")
+						err = errors.New("JWT: Error Validating aud Claims - Single aud case")
 						return token, err
 					}
 				case "[]interface {}":
@@ -49,17 +47,16 @@ func (a *Auth0) NewMiddleware() *jwtmiddleware.JWTMiddleware {
 					err = ValidateAudienceAgainst(audsStr, a.Config.APIIdentifier)
 
 					if err != nil {
-						log.WithFields(log.Fields{"err": err}).Errorln("Error Validating JWT aud Claims")
+						err = errors.New("JWT: Error Validating aud Claims - Multiple aud case")
 						return token, err
 					}
 				default:
-					log.WithFields(log.Fields{"err": err}).Errorln("Error Validating JWT aud Claims")
+					err = errors.New("JWT: Error Validating aud Claims - Unknown aud case")
 					return token, err
 				}
 				// verify iss claim
 				if claims.VerifyIssuer(a.Config.Domain, true) == false {
 					err = errors.New("JWT: Invalid issuer")
-					log.WithFields(log.Fields{"err": err}).Errorln("JWT aud validation")
 					return token, err
 				}
 
@@ -69,14 +66,13 @@ func (a *Auth0) NewMiddleware() *jwtmiddleware.JWTMiddleware {
 				keys := a.JWKS.LookupKeyID(kid)
 				if len(keys) == 0 {
 					err = errors.New("JWKs: Failed to look up keys")
-					log.WithFields(log.Fields{"err": err}).Errorln("JWK RSA validation")
 					return token, err
 				}
 				// 2. Build the public RSA key
 				var key interface{}
 				err := keys[0].Raw(&key)
 				if err != nil {
-					log.WithFields(log.Fields{"err": err}).Errorln("JWK Failed to build public key")
+					err = errors.New("JWKs: Failed to build public key")
 					return token, err
 				}
 				rsaPublicKey = key.(*rsa.PublicKey)

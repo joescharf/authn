@@ -2,6 +2,7 @@ package auth0
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/integralist/go-findroot/find"
@@ -11,11 +12,19 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+type testTokenConfig struct {
+	Invalid  string `envconfig:"TEST_TOKEN_INVALID"`
+	MultiAud string `envconfig:"TEST_TOKEN_MULTIPLE_AUDIENCE"`
+	Expired  string `envconfig:"TEST_TOKEN_EXPIRED"`
+}
+
 var testConfig Config
+var testTokens testTokenConfig
 
 // ---- START: Initialize Test Environment
 func init() {
 	testConfig, _ = LoadTestConfig()
+	testTokens, _ = LoadTestTokens()
 }
 
 // ---- END: Initialize Test Environment
@@ -27,6 +36,7 @@ type UnitTestSuite struct {
 
 func TestUnitTestSuite(t *testing.T) {
 	suite.Run(t, new(UnitTestSuite))
+
 }
 
 // ---- END: SETUP UNIT TEST SUITE
@@ -55,20 +65,52 @@ func (suite *UnitTestSuite) TestMiddleware() {
 
 }
 
-func (suite *UnitTestSuite) TestMiddlewareMultiAudience() {
+func (suite *UnitTestSuite) TestInvalidToken() {
 	var err error
-	tokenMultipleAudience := `ADDME`
+	token := testTokens.Invalid
 	a0 := New(&testConfig)
 
 	// 1. Setup the REQUEST / response
-	httpReq, _ := http.NewRequest("GET", "/", nil)
-	httpReq.Header.Set("Authorization", "Bearer "+tokenMultipleAudience)
-	var respWriter http.ResponseWriter
+	httpReq := httptest.NewRequest("GET", "/", nil)
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
 
 	// Init the middleware:
 	a0Middleware := a0.NewMiddleware()
-	err = a0Middleware.CheckJWT(respWriter, httpReq)
+	err = a0Middleware.CheckJWT(recorder, httpReq)
+	suite.Equal("Error parsing token: unexpected end of JSON input", err.Error(), "Unexpected Error")
+}
+
+func (suite *UnitTestSuite) TestMiddlewareMultiAudience() {
+	var err error
+	token := testTokens.MultiAud
+	a0 := New(&testConfig)
+
+	// 1. Setup the REQUEST / response
+	httpReq := httptest.NewRequest("GET", "/", nil)
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+
+	// Init the middleware:
+	a0Middleware := a0.NewMiddleware()
+	err = a0Middleware.CheckJWT(recorder, httpReq)
 	suite.Nil(err, "Error not Nil")
+}
+
+func (suite *UnitTestSuite) TestMiddlewareTokenExpired() {
+	var err error
+	token := testTokens.Expired
+	a0 := New(&testConfig)
+
+	// 1. Setup the REQUEST / response
+	httpReq := httptest.NewRequest("GET", "/", nil)
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+
+	// Init the middleware:
+	a0Middleware := a0.NewMiddleware()
+	err = a0Middleware.CheckJWT(recorder, httpReq)
+	suite.Equal("Error parsing token: Token is expired", err.Error(), "Unexpected Error")
 }
 
 // ---- SUPPORTING FUNCTIONS
@@ -78,6 +120,17 @@ func LoadTestConfig() (Config, error) {
 	_ = godotenv.Load(GitRootDir() + "/.env")
 
 	cfg := Config{}
+	err := envconfig.Process("", &cfg)
+
+	return cfg, err
+
+}
+
+func LoadTestTokens() (testTokenConfig, error) {
+
+	_ = godotenv.Load(GitRootDir() + "/.env")
+
+	cfg := testTokenConfig{}
 	err := envconfig.Process("", &cfg)
 
 	return cfg, err
