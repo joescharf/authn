@@ -25,6 +25,17 @@ type (
 		AccessToken string `json:"access_token,omitempty"`
 	}
 
+	OAuthRequest struct {
+		ClientID     string `json:"client_id,omitempty"`
+		ClientSecret string `json:"client_secret,omitempty"`
+		Audience     string `json:"audience,omitempty"`
+		GrantType    string `json:"grant_type,omitempty"`
+	}
+	OAuthResponse struct {
+		AccessToken string `json:"access_token,omitempty"`
+		TokenType   string `json:"token_type,omitempty"`
+	}
+
 	Auth0 struct {
 		Config *Config
 		JWKS   *jwk.Set

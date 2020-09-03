@@ -8,7 +8,6 @@ import (
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/lestrrat-go/jwx/jwk"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -84,13 +83,4 @@ func (a *Auth0) NewMiddleware() *jwtmiddleware.JWTMiddleware {
 	})
 
 	return jwtMiddleware
-}
-
-func (a *Auth0) getJWKs() (*jwk.Set, error) {
-	baseURL := fmt.Sprintf("%s.well-known/jwks.json", a.Config.Domain)
-	jwks, err := jwk.Fetch(baseURL)
-	if err != nil {
-		log.WithFields(log.Fields{"err": err}).Errorln("Error retrieving well-known JWKS")
-	}
-	return jwks, err
 }

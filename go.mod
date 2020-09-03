@@ -4,7 +4,9 @@ go 1.15
 
 require (
 	github.com/auth0/go-jwt-middleware v0.0.0-20200810150920-a32d7af194d1
+	github.com/davecgh/go-spew v1.1.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/go-resty/resty/v2 v2.3.0
 	github.com/integralist/go-findroot v0.0.0-20160518114804-ac90681525dc
 	github.com/joho/godotenv v1.3.0
 	github.com/kelseyhightower/envconfig v1.4.0

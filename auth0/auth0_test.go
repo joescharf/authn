@@ -113,6 +113,14 @@ func (suite *UnitTestSuite) TestMiddlewareTokenExpired() {
 	suite.Equal("Error parsing token: Token is expired", err.Error(), "Unexpected Error")
 }
 
+func (suite *UnitTestSuite) TestGetToken2() {
+	a0 := New(&testConfig)
+	tResp, err := a0.GetToken2()
+	suite.Nil(err, "Error not Nil")
+	suite.Greater(len(tResp.Raw), 0)
+	suite.True(tResp.Valid)
+}
+
 // ---- SUPPORTING FUNCTIONS
 
 func LoadTestConfig() (Config, error) {
