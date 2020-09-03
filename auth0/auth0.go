@@ -1,6 +1,7 @@
 package auth0
 
 import (
+	"github.com/dgrijalva/jwt-go"
 	"github.com/lestrrat-go/jwx/jwk"
 	log "github.com/sirupsen/logrus"
 )
@@ -11,18 +12,6 @@ type (
 		Domain        string `envconfig:"AUTH0_ISS_DOMAIN"`
 		ClientID      string `envconfig:"AUTH0_CLIENT_ID"`
 		ClientSecret  string `envconfig:"AUTH0_CLIENT_SECRET"`
-	}
-
-	TokenRequest struct {
-		ClientID          string `json:"client_id,omitempty"`
-		ClientSecret      string `json:"client_secret,omitempty"`
-		Audience          string `json:"audience,omitempty"`
-		GrantType         string `json:"grant_type"`
-		ClientCredentials string `json:"client_credentials,omitempty"`
-	}
-
-	TokenResponse struct {
-		AccessToken string `json:"access_token,omitempty"`
 	}
 
 	OAuthRequest struct {
@@ -37,8 +26,10 @@ type (
 	}
 
 	Auth0 struct {
-		Config *Config
-		JWKS   *jwk.Set
+		Config                    *Config
+		JWKS                      *jwk.Set
+		cachedManagementAPIToken  *jwt.Token
+		cachedApplicationAPIToken *jwt.Token
 	}
 )
 

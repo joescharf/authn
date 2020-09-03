@@ -1,16 +1,12 @@
 package auth0
 
 import (
-	"bytes"
 	"crypto/rsa"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"net/url"
+	"reflect"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-resty/resty/v2"
 	"github.com/lestrrat-go/jwx/jwk"
@@ -20,50 +16,63 @@ import (
 func (a *Auth0) getJWKs() (*jwk.Set, error) {
 	baseURL := fmt.Sprintf("%s.well-known/jwks.json", a.Config.Domain)
 	jwks, err := jwk.Fetch(baseURL)
-	if err != nil {
-		log.WithFields(log.Fields{"err": err}).Errorln("Error retrieving well-known JWKS")
-	}
 	return jwks, err
 }
-
-func (a *Auth0) GetToken() (*TokenResponse, error) {
-	url := "https://scharfnado.us.auth0.com/oauth/token"
-
-	tokenRequest := TokenRequest{
-		ClientID:     a.Config.ClientID,
-		ClientSecret: a.Config.ClientSecret,
-		Audience:     a.Config.APIIdentifier,
-		GrantType:    "client_credentials",
-	}
-	payload, _ := json.Marshal(tokenRequest)
-
-	req, _ := http.NewRequest("POST", url, bytes.NewReader(payload))
-
-	req.Header.Add("content-type", "application/json")
-
-	res, _ := http.DefaultClient.Do(req)
-
-	defer res.Body.Close()
-	body, _ := ioutil.ReadAll(res.Body)
-
-	tokenResponse := new(TokenResponse)
-	err := json.Unmarshal(body, tokenResponse)
-
-	return tokenResponse, err
+func (a *Auth0) ClearCachedTokens() {
+	a.cachedManagementAPIToken = &jwt.Token{}
+	a.cachedApplicationAPIToken = &jwt.Token{}
 }
 
-// GetToken2 Retrieves Auth0 Management API AccessToken
+// GetManagementAPIToken Retrieves Auth0 Management API AccessToken
+// audience: Tenant Domain + /api/v2/ (A0 Management API System Identifier)
+func (a *Auth0) GetManagementAPIToken() (*jwt.Token, error) {
+
+	// Check to see if we've cached the management token
+	if a.cachedManagementAPIToken != nil && a.cachedManagementAPIToken.Valid {
+		log.Debugln("Cached Management Token Returned")
+		return a.cachedManagementAPIToken, nil
+	} else {
+		log.Debugln("New Management Token Returned")
+		t, err := a.getToken(a.Config.Domain + "api/v2/")
+		if err != nil {
+			return t, err
+		}
+		a.cachedManagementAPIToken = t
+		return t, err
+	}
+}
+
+// GetApplicationAPIToken Retrieves Token for a Custom API
+// audience: Custom API Identifier
+func (a *Auth0) GetApplicationAPIToken() (*jwt.Token, error) {
+	// Check to see if we've cached the application token
+	if a.cachedApplicationAPIToken != nil && a.cachedApplicationAPIToken.Valid {
+		log.Debugln("Cached Application Token Returned")
+		return a.cachedApplicationAPIToken, nil
+	} else {
+		log.Debugln("New Application Token Returned")
+		t, err := a.getToken(a.Config.APIIdentifier)
+		if err != nil {
+			return t, err
+		}
+		a.cachedApplicationAPIToken = t
+		return t, err
+	}
+
+}
+
+// getToken does the oAuth token retrieval from Auth0
 // Because Auth0 needs audience in the oauth request, we can't use golang oauth2
 // libraries as it doesn't support adding this field. So we have to manually make the request:
-// oauth endpoint: https://auth0_domain/oauth/token
-func (a *Auth0) GetToken2() (*jwt.Token, error) {
+// oauth endpoint: https://[auth0_domain]/oauth/token
+func (a *Auth0) getToken(audience string) (*jwt.Token, error) {
 	jwtToken := new(jwt.Token)
 
 	oaURL, _ := url.Parse(a.Config.Domain + "oauth/token")
 	oaRequest := &OAuthRequest{
 		ClientID:     a.Config.ClientID,
 		ClientSecret: a.Config.ClientSecret,
-		Audience:     a.Config.Domain + "api/v2/",
+		Audience:     audience,
 		GrantType:    "client_credentials",
 	}
 
@@ -73,39 +82,56 @@ func (a *Auth0) GetToken2() (*jwt.Token, error) {
 		SetBody(oaRequest).
 		Post(oaURL.String())
 	token := oaResp.Result().(*OAuthResponse)
-	if err != nil {
-		return jwtToken, err
-	}
-	jwtToken, err = jwt.Parse(token.AccessToken, a.Validator())
-	if err != nil {
-		return jwtToken, err
-	}
-	spew.Dump(jwtToken)
-	return jwtToken, err
 
+	if err != nil {
+		return jwtToken, err
+	}
+
+	jwtToken, err = jwt.Parse(token.AccessToken, a.Validator(audience))
+	return jwtToken, err
 }
 
 // Validator is the callback to supply signing key for verification
-func (a *Auth0) Validator() jwt.Keyfunc {
+func (a *Auth0) Validator(aud string) jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		rsaPublicKey := new(rsa.PublicKey)
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			// Then check time based claims; exp, iat, nbf
 			err := claims.Valid()
 			if err != nil {
-				log.WithFields(log.Fields{"err": err}).Errorln("JWT: Invalid Claims")
 				return token, err
 			}
 			// Verify 'aud' claim
-			if claims.VerifyAudience(a.Config.APIIdentifier, true) == false {
-				err = errors.New("JWT: Invalid audience")
-				log.WithFields(log.Fields{"err": err}).Errorln("JWT aud validation")
+			// jwt-go prior to v4 doesn't handle multiple audience claims
+			// So we have to handle them using the v4 validation code for now
+			switch reflect.TypeOf(claims["aud"]).String() {
+			case "string":
+				if claims.VerifyAudience(aud, true) == false {
+					err = errors.New("JWT: Error Validating aud Claims - Single aud case")
+					return token, err
+				}
+			case "[]interface {}":
+				// Type assert to []interface{}
+				auds := claims["aud"].([]interface{})
+				// Convert interface aud values to string slice:
+				audsStr := make([]string, len(auds))
+				for i, v := range auds {
+					audsStr[i] = v.(string)
+				}
+				// Validate
+				err = ValidateAudienceAgainst(audsStr, aud)
+
+				if err != nil {
+					err = errors.New("JWT: Error Validating aud Claims - Multiple aud case")
+					return token, err
+				}
+			default:
+				err = errors.New("JWT: Error Validating aud Claims - Unknown aud case")
 				return token, err
 			}
 			// verify iss claim
 			if claims.VerifyIssuer(a.Config.Domain, true) == false {
 				err = errors.New("JWT: Invalid issuer")
-				log.WithFields(log.Fields{"err": err}).Errorln("JWT aud validation")
 				return token, err
 			}
 
@@ -115,14 +141,13 @@ func (a *Auth0) Validator() jwt.Keyfunc {
 			keys := a.JWKS.LookupKeyID(kid)
 			if len(keys) == 0 {
 				err = errors.New("JWKs: Failed to look up keys")
-				log.WithFields(log.Fields{"err": err}).Errorln("JWK RSA validation")
 				return token, err
 			}
 			// 2. Build the public RSA key
 			var key interface{}
 			err = keys[0].Raw(&key)
 			if err != nil {
-				log.WithFields(log.Fields{"err": err}).Errorln("JWK Failed to build public key")
+				err = errors.New("JWKs: Failed to build public key")
 				return token, err
 			}
 			rsaPublicKey = key.(*rsa.PublicKey)

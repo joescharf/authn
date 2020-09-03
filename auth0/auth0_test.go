@@ -41,21 +41,49 @@ func TestUnitTestSuite(t *testing.T) {
 
 // ---- END: SETUP UNIT TEST SUITE
 
-func (suite *UnitTestSuite) TestGetToken() {
+func (suite *UnitTestSuite) TestGetManagementAPIToken() {
 	a0 := New(&testConfig)
-	tResp, err := a0.GetToken()
+	tResp, err := a0.GetManagementAPIToken()
 	suite.Nil(err, "Error not Nil")
-	suite.Greater(len(tResp.AccessToken), 0)
+	suite.Greater(len(tResp.Raw), 0)
+	suite.True(tResp.Valid)
+
+	// Second time to test cached token
+	tResp2, err := a0.GetManagementAPIToken()
+	suite.Nil(err, "Error not Nil")
+	suite.Equal(tResp.Raw, tResp2.Raw, "Tokens don't match!")
 }
+
+func (suite *UnitTestSuite) TestGetApplicationAPIToken() {
+	a0 := New(&testConfig)
+	tResp, err := a0.GetApplicationAPIToken()
+	suite.Nil(err, "Error not Nil")
+	suite.Greater(len(tResp.Raw), 0)
+	suite.True(tResp.Valid)
+
+	// Second time to test cached token
+	tResp2, err := a0.GetApplicationAPIToken()
+	suite.Nil(err, "Error not Nil")
+	suite.Equal(tResp.Raw, tResp2.Raw, "Tokens don't match!")
+
+	// Clear the cache
+	a0.ClearCachedTokens()
+
+	// Third time to test cleared cache
+	tResp3, err := a0.GetApplicationAPIToken()
+	suite.Nil(err, "Error not Nil")
+	suite.NotEqual(tResp.Raw, tResp3.Raw, "Tokens shouldn't match!")
+}
+
 func (suite *UnitTestSuite) TestMiddleware() {
 	a0 := New(&testConfig)
-	tResp, err := a0.GetToken()
+	tResp, err := a0.GetApplicationAPIToken()
 	suite.Nil(err, "Error not Nil")
-	suite.Greater(len(tResp.AccessToken), 0)
+	suite.Greater(len(tResp.Raw), 0)
 
 	// 1. Setup the REQUEST / response
 	httpReq, _ := http.NewRequest("GET", "/", nil)
-	httpReq.Header.Set("Authorization", "Bearer "+tResp.AccessToken)
+	httpReq.Header.Set("Authorization", "Bearer "+tResp.Raw)
 	var respWriter http.ResponseWriter
 
 	// Init the middleware:
@@ -82,6 +110,7 @@ func (suite *UnitTestSuite) TestInvalidToken() {
 }
 
 func (suite *UnitTestSuite) TestMiddlewareMultiAudience() {
+
 	var err error
 	token := testTokens.MultiAud
 	a0 := New(&testConfig)
@@ -111,14 +140,6 @@ func (suite *UnitTestSuite) TestMiddlewareTokenExpired() {
 	a0Middleware := a0.NewMiddleware()
 	err = a0Middleware.CheckJWT(recorder, httpReq)
 	suite.Equal("Error parsing token: Token is expired", err.Error(), "Unexpected Error")
-}
-
-func (suite *UnitTestSuite) TestGetToken2() {
-	a0 := New(&testConfig)
-	tResp, err := a0.GetToken2()
-	suite.Nil(err, "Error not Nil")
-	suite.Greater(len(tResp.Raw), 0)
-	suite.True(tResp.Valid)
 }
 
 // ---- SUPPORTING FUNCTIONS
