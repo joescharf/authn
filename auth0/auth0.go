@@ -96,6 +96,9 @@ func (a *Auth0) GetJWKS() *jwk.Set {
 func (a *Auth0) GetAudience() string {
 	return a.Config.APIIdentifier
 }
+func (a *Auth0) GetDomain() string {
+	return a.Config.Domain
+}
 
 // Signup uses Authentication API for signup
 // requires an enabled connection from the M2M Application to the database
